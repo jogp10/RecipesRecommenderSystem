@@ -1,3 +1,5 @@
 pandas
-warnings
-igraph
+networkx
+matplotlib
+scipy
+scikit-surprise
