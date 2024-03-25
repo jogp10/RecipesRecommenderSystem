@@ -3,3 +3,4 @@ networkx
 matplotlib
 scipy
 scikit-surprise
+scikit-sklearn
