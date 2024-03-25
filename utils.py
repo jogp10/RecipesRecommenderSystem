@@ -2,7 +2,9 @@ import networkx as nx
 from networkx.algorithms import community
 import pandas as pd
 import matplotlib.pyplot as plt
-
+from surprise import Dataset, Reader, KNNBasic, NormalPredictor, SVD
+from surprise.model_selection import train_test_split
+from surprise import accuracy
 
 def community_detection(g):
     # Louvain method
@@ -85,7 +87,49 @@ def plot_centrality_over_time_joined(centrality_list, df_member):
     plt.grid(True)
     plt.xticks(centrality_by_year.index)  # Set x-ticks to years
     plt.show()
+    
 
+def collaborative_filtering(df_reviews, communities, test_fraction, user_based = True, model_type = 'KNN'):
+    rmse_scores = []
+    mae_scores = []
+    
+    for i, community in enumerate(communities):
+        community = [int(c) for c in community]
+        community_reviews = df_reviews[df_reviews['member_id'].isin(community)]
+    
+        if len(community_reviews) > 0:
+        
+            reader = Reader(rating_scale=(1, 5))
+            data = Dataset.load_from_df(community_reviews[['member_id', 'recipe_id', 'rating']], reader)
+            trainset, testset = train_test_split(data, test_size = test_fraction)
+
+            if model_type == 'KNN':
+                model = KNNBasic(sim_options={'user_based': user_based}, verbose= False)
+            elif model_type == 'SVD':
+                model = SVD(verbose = False)
+
+            model.fit(trainset)
+
+            predictions = model.test(testset, verbose= False)
+            rmse = accuracy.rmse(predictions, verbose= False)
+            mae = accuracy.mae(predictions, verbose =False)
+        
+            rmse_scores.append(rmse)
+            mae_scores.append(mae)
+            
+            print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
+            print(f"\033[1mRMSE ->\033[0m", rmse)
+            print(f"\033[1mMAE ->\033[0m", mae)
+            print()
+            
+        else:
+            print(f"Community {i + 1} has insufficient data for recommendations.")
+
+    
+    avg_rmse = sum(rmse_scores) / len(rmse_scores)
+    avg_mae = sum(mae_scores) / len(mae_scores)
+    
+    return avg_rmse, avg_mae
 
 def initial_obs(df):
     display(df.head(10))
@@ -96,3 +140,30 @@ def initial_obs(df):
     print(f"\n\033[1m----Null Count----\033[0m")
     print(df.isna().sum())
 
+
+def plot_reviews_rating(df):
+    rating_counts = df['rating'].value_counts().sort_index()
+
+    # Plot the number of reviews for each rating
+    plt.bar(rating_counts.index, rating_counts.values)
+
+    # Add labels and title
+    plt.xlabel('Rating')
+    plt.ylabel('Number of Reviews')
+    plt.title('Number of Reviews for Each Rating')
+
+    # Show the plot
+    plt.show()
+
+def plot_num_users_num_reviews(df):
+    ratings_count = df.groupby('member_id')['rating'].count().clip(upper=50)
+
+    # Plot the distribution of ratings
+    plt.figure(figsize=(10, 6))
+    plt.hist(ratings_count, bins=range(1, 15), color='skyblue', edgecolor='black')
+    plt.title('Distribution of Reviews')
+    plt.xlabel('Number of Reviews')
+    plt.ylabel('Number of Members')
+    plt.xticks(range(1, 20))
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
