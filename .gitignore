@@ -165,3 +165,6 @@ cython_debug/
 
 # Except for the following
 !*_sampled.csv
+
+.vs/
+.idea/
