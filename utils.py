@@ -347,3 +347,11 @@ def plot_num_users_num_reviews(df):
     plt.xticks(range(1, 20))
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
+
+def evaluate_model(model, trainset, testset):
+    model.fit(trainset)
+    predictions = model.test(testset)
+    rmse = accuracy.rmse(predictions, verbose=False)
+    mae = accuracy.mae(predictions, verbose=False)
+
+    return rmse, mae
