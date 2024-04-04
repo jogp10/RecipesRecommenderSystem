@@ -111,6 +111,9 @@ def collaborative_filtering(df_reviews, communities, test_fraction, user_based =
                 model = KNNBasic(sim_options={'user_based': user_based}, verbose= False)
             elif model_type == 'SVD':
                 model = SVD(verbose = False)
+            elif model_type == "Random":
+                model = NormalPredictor()
+
 
             model.fit(trainset)
 
@@ -354,4 +357,4 @@ def evaluate_model(model, trainset, testset):
     rmse = accuracy.rmse(predictions, verbose=False)
     mae = accuracy.mae(predictions, verbose=False)
 
-    return rmse, mae
+    return rmse, mae, predictions
