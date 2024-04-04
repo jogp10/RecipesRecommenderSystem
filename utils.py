@@ -10,6 +10,8 @@ from sklearn.metrics.pairwise import linear_kernel
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.linear_model import LinearRegression
 import numpy as np
+from collections import defaultdict
+
 
 def community_detection(g):
     # Louvain method
@@ -96,6 +98,8 @@ def plot_centrality_over_time_joined(centrality_list, df_member):
 def collaborative_filtering(df_reviews, communities, test_fraction, user_based = True, model_type = 'KNN'):
     rmse_scores = []
     mae_scores = []
+    precision_scores = []
+    recall_scores = []
     
     for i, community in enumerate(communities):
         community = [int(c) for c in community]
@@ -118,15 +122,25 @@ def collaborative_filtering(df_reviews, communities, test_fraction, user_based =
             model.fit(trainset)
 
             predictions = model.test(testset, verbose= False)
+            
+            precisions, recalls = precision_recall_at_k(predictions, k=10, threshold=4)
+
+            precision = sum(prec for prec in precisions.values()) / len(precisions)
+            recall = sum(rec for rec in recalls.values()) / len(recalls)
+
             rmse = accuracy.rmse(predictions, verbose= False)
             mae = accuracy.mae(predictions, verbose =False)
         
             rmse_scores.append(rmse)
             mae_scores.append(mae)
+            precision_scores.append(precision)
+            recall_scores.append(recall)
             
             print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
             print(f"\033[1mRMSE ->\033[0m", rmse)
             print(f"\033[1mMAE ->\033[0m", mae)
+            print(f"\033[1mPrecision@10 ->\033[0m", precision)
+            print(f"\033[1mRecall@10 ->\033[0m", recall)
             print()
             
         else:
@@ -135,8 +149,10 @@ def collaborative_filtering(df_reviews, communities, test_fraction, user_based =
     
     avg_rmse = sum(rmse_scores) / len(rmse_scores)
     avg_mae = sum(mae_scores) / len(mae_scores)
+    avg_precision = sum(precision_scores) / len(precision_scores)
+    avg_recall = sum(recall_scores) / len(recall_scores)
     
-    return avg_rmse, avg_mae
+    return avg_rmse, avg_mae, avg_precision, avg_recall
 
 def find_similars(df_reviews, df_recipes, communities):
     all_recommendations = {}
@@ -356,5 +372,73 @@ def evaluate_model(model, trainset, testset):
     predictions = model.test(testset)
     rmse = accuracy.rmse(predictions, verbose=False)
     mae = accuracy.mae(predictions, verbose=False)
+    
+    precisions, recalls = precision_recall_at_k(predictions, k=10, threshold=4)
+    precision = sum(prec for prec in precisions.values()) / len(precisions)
+    recall = sum(rec for rec in recalls.values()) / len(recalls)
 
-    return rmse, mae, predictions
+    return rmse, mae, predictions, precision, recall
+
+def get_top_n(predictions, n=10):
+    """Return the top-N recommendation for each user from a set of predictions.
+
+    Args:
+        predictions(list of Prediction objects): The list of predictions, as
+            returned by the test method of an algorithm.
+        n(int): The number of recommendation to output for each user. Default
+            is 10.
+
+    Returns:
+    A dict where keys are user (raw) ids and values are lists of tuples:
+        [(raw item id, rating estimation), ...] of size n.
+    """
+
+    # First map the predictions to each user.
+    top_n = defaultdict(list)
+    for uid, iid, true_r, est, _ in predictions:
+        top_n[uid].append((iid, est))
+
+    # Then sort the predictions for each user and retrieve the k highest ones.
+    for uid, user_ratings in top_n.items():
+        user_ratings.sort(key=lambda x: x[1], reverse=True)
+        top_n[uid] = user_ratings[:n]
+
+    return top_n
+
+def precision_recall_at_k(predictions, k=10, threshold=3):
+    """Return precision and recall at k metrics for each user"""
+
+    user_est_true = defaultdict(list)
+    for uid, _, true_r, est, _ in predictions:
+        user_est_true[uid].append((est, true_r))
+
+    precisions = dict()
+    recalls = dict()
+    for uid, user_ratings in user_est_true.items():
+
+        # Sort user ratings by estimated value
+        user_ratings.sort(key=lambda x: x[0], reverse=True)
+
+        # Number of relevant items
+        n_rel = sum((true_r >= threshold) for (_, true_r) in user_ratings)
+
+        # Number of recommended items in top k
+        n_rec_k = sum((est >= threshold) for (est, _) in user_ratings[:k])
+
+        # Number of relevant and recommended items in top k
+        n_rel_and_rec_k = sum(
+            ((true_r >= threshold) and (est >= threshold))
+            for (est, true_r) in user_ratings[:k]
+        )
+
+        # Precision@K: Proportion of recommended items that are relevant
+        # When n_rec_k is 0, Precision is undefined. We here set it to 0.
+
+        precisions[uid] = n_rel_and_rec_k / n_rec_k if n_rec_k != 0 else 0
+
+        # Recall@K: Proportion of relevant items that are recommended
+        # When n_rel is 0, Recall is undefined. We here set it to 0.
+
+        recalls[uid] = n_rel_and_rec_k / n_rel if n_rel != 0 else 0
+
+    return precisions, recalls
