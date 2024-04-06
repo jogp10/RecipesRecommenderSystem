@@ -236,6 +236,9 @@ def create_similar_recipes_dataframe(all_recommendations):
     for _, community_recommendations in all_recommendations.items():
         for recipe_id, recipe_data in community_recommendations.items():
             original_title = recipe_data['original_title']
+            similar_recipes_count = len(recipe_data['similar_recipes'])
+            
+            similar_scores = [similar_recipe['score'] for similar_recipe in recipe_data['similar_recipes']]
             
             for similar_recipe in recipe_data['similar_recipes']:
                 similar_title = similar_recipe['title']
@@ -251,7 +254,21 @@ def create_similar_recipes_dataframe(all_recommendations):
                 })
     
     df_similar_recipes = pd.DataFrame(similar_recipes_data)
+    
+    # Ensure uniqueness of the pair recipe_id and similar_recipe_id
+    df_similar_recipes.drop_duplicates(subset=['recipe_id', 'similar_recipe_id'], inplace=True)
+    
     return df_similar_recipes
+
+def calculate_average_similarity(df_similar_recipes):
+    total_similar_recipes = df_similar_recipes['recipe_id'].nunique()
+    total_similar_score = df_similar_recipes['score'].sum()
+    total_pairs = len(df_similar_recipes)
+    
+    avg_similar_recipes_per_recipe = total_pairs / total_similar_recipes
+    avg_similar_score = total_similar_score / total_pairs
+    
+    return avg_similar_recipes_per_recipe, avg_similar_score
 
 def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fraction, user_based = False, model_type = 'KNN'):
     rmse_scores = []
@@ -325,8 +342,81 @@ def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fr
             print(f"Community {i + 1} has insufficient data for recommendations.")
 
     
-    avg_rmse = sum(rmse_scores) / len(rmse_scores)
-    avg_mae = sum(mae_scores) / len(mae_scores)
+    # Calculate averages excluding values equal to 0
+    non_zero_rmse_scores = [score for score in rmse_scores if score != 0]
+    non_zero_mae_scores = [score for score in mae_scores if score != 0]
+
+    avg_rmse = sum(non_zero_rmse_scores) / len(non_zero_rmse_scores) if non_zero_rmse_scores else 0
+    avg_mae = sum(non_zero_mae_scores) / len(non_zero_mae_scores) if non_zero_mae_scores else 0
+    
+    return avg_rmse, avg_mae
+
+def overall_content_based_filtering(df_reviews, df_similar_recipes, test_fraction, user_based=False, model_type='KNN'):
+    rmse_scores = []
+    mae_scores = []
+    
+    # Merge reviews dataframe with recipe similarity data
+    merged_data = pd.merge(df_reviews, df_similar_recipes, on='recipe_id', how='left')
+
+    # Iterate over each row in the merged DataFrame
+    for index, row in merged_data.iterrows():
+        user_id = row['member_id']
+        similar_recipe_id = row['similar_recipe_id']
+        
+        # Check if the user reviewed the similar recipe
+        similar_recipe_review = df_reviews[(df_reviews['member_id'] == user_id) & (df_reviews['recipe_id'] == similar_recipe_id)]
+
+        # If the user reviewed the similar recipe, extract their rating
+        if not similar_recipe_review.empty:
+            similar_recipe_rating = similar_recipe_review.iloc[0]['rating']
+        else:
+            similar_recipe_rating = 0
+        
+        # Assign the rating to the 'similar_recipe_rating' column
+        merged_data.at[index, 'similar_recipe_rating'] = similar_recipe_rating
+
+    # Drop rows with missing similar recipe ratings
+    merged_data = merged_data.drop(merged_data[merged_data['similar_recipe_rating'] == 0].index)
+
+    # Drop duplicate rows based on member_id, recipe_id, and similar_recipe_id
+    merged_data.drop_duplicates(subset=['member_id', 'review_id', 'similar_recipe_id'], keep='first', inplace=True)
+
+    if len(merged_data) > 0:
+    
+        # Prepare data for regression
+        regression_data = merged_data[['rating', 'similar_recipe_rating']]
+
+        # Drop rows with missing ratings
+        regression_data.dropna(inplace=True)
+
+        # Define features and target variable
+        X = regression_data[['rating']]
+        y = regression_data['similar_recipe_rating']
+
+        # Initialize and train linear regression model
+        model = LinearRegression()
+        model.fit(X, y)
+
+        # Make predictions using the trained model
+        y_pred = model.predict(X)
+
+        # Calculate MAE and RMSE
+        mae = mean_absolute_error(y, y_pred)
+        rmse = np.sqrt(mean_squared_error(y, y_pred))
+
+        # Append scores to lists
+        mae_scores.append(mae)
+        rmse_scores.append(rmse)
+        
+    else:
+        print("Insufficient data for recommendations.")
+
+    # Calculate averages excluding values equal to 0
+    non_zero_rmse_scores = [score for score in rmse_scores if score != 0]
+    non_zero_mae_scores = [score for score in mae_scores if score != 0]
+
+    avg_rmse = sum(non_zero_rmse_scores) / len(non_zero_rmse_scores) if non_zero_rmse_scores else 0
+    avg_mae = sum(non_zero_mae_scores) / len(non_zero_mae_scores) if non_zero_mae_scores else 0
     
     return avg_rmse, avg_mae
 
