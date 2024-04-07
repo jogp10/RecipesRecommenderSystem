@@ -445,15 +445,25 @@ def plot_reviews_rating(df):
     plt.show()
 
 def plot_num_users_num_reviews(df):
-    ratings_count = df.groupby('member_id')['rating'].count().clip(upper=50)
+    reviews_count = df.groupby('member_id')['review_id'].count()
 
     # Plot the distribution of ratings
-    plt.figure(figsize=(10, 6))
-    plt.hist(ratings_count, bins=range(1, 15), color='skyblue', edgecolor='black')
-    plt.title('Distribution of Reviews')
+    plt.figure(figsize=(15, 6))
+    plt.hist(reviews_count, bins=range(1, 16), align='left', color='skyblue', edgecolor='black')
+    plt.title('Distribution of Number of Reviews per User')
     plt.xlabel('Number of Reviews')
     plt.ylabel('Number of Members')
-    plt.xticks(range(1, 20))
+    plt.xticks(range(1, 16))
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.show()
+    
+    # Plot the distribution of number of reviews per user for the rest of the numbers
+    plt.figure(figsize=(15, 6))
+    plt.hist(reviews_count, bins=range(16, reviews_count.max() + 1), align='left', color='skyblue', edgecolor='black')
+    plt.title('Distribution of Number of Reviews per User (16 and above)')
+    plt.xlabel('Number of Reviews')
+    plt.ylabel('Number of Users')
+    plt.xticks(range(16, reviews_count.max() + 1))
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.show()
 
