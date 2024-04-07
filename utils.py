@@ -202,6 +202,10 @@ def find_similars(df_reviews, df_recipes, communities):
                         # Skip if similar recipe is the original recipe or already encountered
                         if similar_recipe_id == recipe_id or similar_recipe_id in unique_similar_recipe_ids:
                             continue
+                        
+                        # Skip if similar recipe is already reviewed by the user
+                        if similar_recipe_id in user_reviews['recipe_id'].values:
+                            continue
                             
                         # Store unique similar recipe ID
                         unique_similar_recipe_ids.add(similar_recipe_id)
