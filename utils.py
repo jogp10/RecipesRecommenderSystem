@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from surprise import Dataset, Reader, KNNBasic, NormalPredictor, SVD
 from surprise.model_selection import train_test_split
+from sklearn.model_selection import train_test_split as tts
 from surprise import accuracy
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
@@ -306,7 +307,7 @@ def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fr
         # Drop duplicate rows based on member_id, recipe_id, and similar_recipe_id
         community_reviews.drop_duplicates(subset=['member_id', 'review_id', 'similar_recipe_id'], keep='first', inplace=True)
 
-        if len(community_reviews) > 0:
+        if len(community_reviews) > 1:
         
             # Prepare data for regression
             regression_data = community_reviews[['rating', 'similar_recipe_rating']]
@@ -318,16 +319,19 @@ def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fr
             X = regression_data[['rating']]
             y = regression_data['similar_recipe_rating']
 
+            # Split the data into training and testing sets
+            X_train, X_test, y_train, y_test = tts(X, y, test_size=0.2, random_state=42)
+
             # Initialize and train linear regression model
             model = LinearRegression()
-            model.fit(X, y)
+            model.fit(X_train, y_train)
 
             # Make predictions using the trained model
-            y_pred = model.predict(X)
+            y_pred = model.predict(X_test)
 
             # Calculate MAE and RMSE
-            mae = mean_absolute_error(y, y_pred)
-            rmse = np.sqrt(mean_squared_error(y, y_pred))
+            mae = mean_absolute_error(y_test, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
             # Append scores to lists
             mae_scores.append(mae)
@@ -393,16 +397,19 @@ def overall_content_based_filtering(df_reviews, df_similar_recipes, test_fractio
         X = regression_data[['rating']]
         y = regression_data['similar_recipe_rating']
 
+        # Split the data into training and testing sets
+        X_train, X_test, y_train, y_test = tts(X, y, test_size=0.2, random_state=42)
+
         # Initialize and train linear regression model
         model = LinearRegression()
-        model.fit(X, y)
+        model.fit(X_train, y_train)
 
         # Make predictions using the trained model
-        y_pred = model.predict(X)
+        y_pred = model.predict(X_test)
 
         # Calculate MAE and RMSE
-        mae = mean_absolute_error(y, y_pred)
-        rmse = np.sqrt(mean_squared_error(y, y_pred))
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
         # Append scores to lists
         mae_scores.append(mae)
