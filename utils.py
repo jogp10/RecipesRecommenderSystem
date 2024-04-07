@@ -95,7 +95,7 @@ def plot_centrality_over_time_joined(centrality_list, df_member):
     plt.xticks(centrality_by_year.index)  # Set x-ticks to years
     plt.show() 
 
-def collaborative_filtering(df_reviews, communities, test_fraction, user_based = True, model_type = 'KNN'):
+def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_based = True, model_type = 'KNN'):
     rmse_scores = []
     mae_scores = []
     precision_scores = []
@@ -270,7 +270,7 @@ def calculate_average_similarity(df_similar_recipes):
     
     return avg_similar_recipes_per_recipe, avg_similar_score
 
-def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fraction, user_based = False, model_type = 'KNN'):
+def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fraction = 0.20, model_type = 'LinearRegression'):
     rmse_scores = []
     mae_scores = []
     
@@ -351,7 +351,7 @@ def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fr
     
     return avg_rmse, avg_mae
 
-def overall_content_based_filtering(df_reviews, df_similar_recipes, test_fraction, user_based=False, model_type='KNN'):
+def overall_content_based_filtering(df_reviews, df_similar_recipes, test_fraction=0.20, model_type='LinearRegression'):
     rmse_scores = []
     mae_scores = []
     
