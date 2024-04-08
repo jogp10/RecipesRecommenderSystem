@@ -155,115 +155,91 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
     
     return avg_rmse, avg_mae, avg_precision, avg_recall
 
-def find_similars(df_reviews, df_recipes, communities):
+def find_similars(df_reviews, df_recipes):
     all_recommendations = {}
     
-    for i, community in enumerate(communities):
-        community = [int(c) for c in community]
-        community_reviews = df_reviews[df_reviews['member_id'].isin(community)]
-        community_recommendations = {}
+    # Merge reviews with recipe characteristics
+    combined_data = pd.merge(df_reviews, df_recipes, on='recipe_id', how='left')
+    
+    # TF-IDF vectorization
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_matrix = tfidf_vectorizer.fit_transform(combined_data['ingredient_food_kg_names'])
+    
+    # Calculate cosine similarity
+    cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix)
+    
+    # Get recipe titles and ids
+    recipe_ids = combined_data['recipe_id'].tolist()
+    recipe_titles = combined_data['title'].tolist()
+    
+    # Iterate through each recipe
+    for recipe_id in combined_data['recipe_id'].unique():
+        recipe_index = combined_data[combined_data['recipe_id'] == recipe_id].index[0]
+        similar_indices = cosine_similarities[recipe_index].argsort()[:-6:-1]  # Top 5 similar recipes
         
-        if len(community_reviews) > 0:
-            # Merge community reviews with recipe characteristics
-            community_data = pd.merge(community_reviews, df_recipes, on='recipe_id', how='left')
+        # Keep track of unique similar recipes
+        unique_similar_recipe_ids = set()
+        
+        # Iterate through similar recipes and their indices
+        for idx in similar_indices:
+            similar_recipe_id = recipe_ids[idx]
             
-            # Combine text features (e.g., ingredients, categories) into a single feature
-            #community_data['combined_features'] = community_data['ingredients'] + ' ' + community_data['categories']
+            # Skip if similar recipe is the original recipe or already encountered
+            if similar_recipe_id == recipe_id or similar_recipe_id in unique_similar_recipe_ids:
+                continue
             
-            # TF-IDF vectorization
-            tfidf_vectorizer = TfidfVectorizer()
-            tfidf_matrix = tfidf_vectorizer.fit_transform(community_data['ingredient_food_kg_names'])
+            # Store unique similar recipe ID
+            unique_similar_recipe_ids.add(similar_recipe_id)
             
-            # Calculate cosine similarity
-            cosine_similarities = linear_kernel(tfidf_matrix, tfidf_matrix)
+            # Store similar recipe data
+            similar_recipe_title = recipe_titles[idx]
+            similar_score = cosine_similarities[recipe_index][idx]
             
-            # Get recipe titles and ids
-            recipe_ids = community_data['recipe_id'].tolist()
-            recipe_titles = community_data['title'].tolist()
+            # Add similar recipe to recommendations
+            if recipe_id not in all_recommendations:
+                all_recommendations[recipe_id] = {
+                    'original_title': recipe_titles[recipe_index],
+                    'similar_recipes': []
+                }
             
-            # Iterate through each user in the community
-            for member_id in community:
-                user_reviews = community_data[community_data['member_id'] == member_id]
-                
-                # Get unique recipes reviewed by the user
-                unique_recipes = user_reviews['recipe_id'].unique()
-                
-                # Iterate through each recipe reviewed by the user
-                for recipe_id in unique_recipes:
-                    recipe_index = community_data[community_data['recipe_id'] == recipe_id].index[0]
-                    similar_indices = cosine_similarities[recipe_index].argsort()[:-6:-1]  # Top 5 similar recipes
-                    
-                    # Keep track of unique similar recipes
-                    unique_similar_recipe_ids = set()
-                    
-                    # Iterate through similar recipes and their indices
-                    for idx in similar_indices:
-                        similar_recipe_id = recipe_ids[idx]
-                        
-                        # Skip if similar recipe is the original recipe or already encountered
-                        if similar_recipe_id == recipe_id or similar_recipe_id in unique_similar_recipe_ids:
-                            continue
-                        
-                        # Skip if similar recipe is already reviewed by the user
-                        if similar_recipe_id in user_reviews['recipe_id'].values:
-                            continue
-                            
-                        # Store unique similar recipe ID
-                        unique_similar_recipe_ids.add(similar_recipe_id)
-                        
-                        # Store similar recipe data
-                        similar_recipe_title = recipe_titles[idx]
-                        similar_score = cosine_similarities[recipe_index][idx]
-                        
-                        # Add similar recipe to recommendations
-                        if recipe_id not in community_recommendations:
-                            community_recommendations[recipe_id] = {
-                                'original_title': recipe_titles[recipe_index],
-                                'similar_recipes': []
-                            }
-                        
-                        community_recommendations[recipe_id]['similar_recipes'].append({
-                            'title': similar_recipe_title,
-                            'id': similar_recipe_id,
-                            'score': similar_score
-                        })
-            
-            all_recommendations[i + 1] = community_recommendations
-            
-        else:
-            print(f"Community {i + 1} has insufficient data for recommendations.")
+            all_recommendations[recipe_id]['similar_recipes'].append({
+                'title': similar_recipe_title,
+                'id': similar_recipe_id,
+                'score': similar_score
+            })
     
     return all_recommendations
 
+
 def create_similar_recipes_dataframe(all_recommendations):
     similar_recipes_data = []
-    
-    for _, community_recommendations in all_recommendations.items():
-        for recipe_id, recipe_data in community_recommendations.items():
-            original_title = recipe_data['original_title']
-            similar_recipes_count = len(recipe_data['similar_recipes'])
-            
-            similar_scores = [similar_recipe['score'] for similar_recipe in recipe_data['similar_recipes']]
-            
-            for similar_recipe in recipe_data['similar_recipes']:
-                similar_title = similar_recipe['title']
-                similar_id = similar_recipe['id']
-                similar_score = similar_recipe['score']
-                
-                similar_recipes_data.append({
-                    'recipe_id': recipe_id,
-                    'recipe_title': original_title,
-                    'similar_recipe_id': similar_id,
-                    'similar_recipe_title': similar_title,
-                    'score': similar_score
-                })
-    
+
+    for recipe_id, recipe_data in all_recommendations.items():
+        original_title = recipe_data['original_title']
+        similar_recipes_count = len(recipe_data['similar_recipes'])
+
+        similar_scores = [similar_recipe['score'] for similar_recipe in recipe_data['similar_recipes']]
+
+        for similar_recipe in recipe_data['similar_recipes']:
+            similar_title = similar_recipe['title']
+            similar_id = similar_recipe['id']
+            similar_score = similar_recipe['score']
+
+            similar_recipes_data.append({
+                'recipe_id': recipe_id,
+                'recipe_title': original_title,
+                'similar_recipe_id': similar_id,
+                'similar_recipe_title': similar_title,
+                'score': similar_score
+            })
+
     df_similar_recipes = pd.DataFrame(similar_recipes_data)
-    
+
     # Ensure uniqueness of the pair recipe_id and similar_recipe_id
     df_similar_recipes.drop_duplicates(subset=['recipe_id', 'similar_recipe_id'], inplace=True)
-    
+
     return df_similar_recipes
+
 
 def calculate_average_similarity(df_similar_recipes):
     total_similar_recipes = df_similar_recipes['recipe_id'].nunique()
@@ -275,161 +251,95 @@ def calculate_average_similarity(df_similar_recipes):
     
     return avg_similar_recipes_per_recipe, avg_similar_score
 
-def content_based_filtering(df_reviews, df_similar_recipes, communities, test_fraction = 0.20, model_type = 'LinearRegression'):
-    rmse_scores = []
-    mae_scores = []
+def content_based_filtering(df_reviews, df_similar_recipes, filtered_communities):
+
+    total_precision = 0
+    total_recall = 0
+    total_communities = 0
     
-    for i, community in enumerate(communities):
+    for i, community in enumerate(filtered_communities):
         community = [int(c) for c in community]
         community_reviews = df_reviews[df_reviews['member_id'].isin(community)]
 
-         # Merge reviews dataframe with recipe similarity data
-        community_reviews = pd.merge(df_reviews, df_similar_recipes, on='recipe_id', how='left')
+        # Merge reviews dataframe with recipe similarity data
+        community_reviews = pd.merge(community_reviews, df_similar_recipes, on='recipe_id', how='left')
 
         community_reviews = community_reviews[community_reviews['member_id'].isin(community)]
 
-        # Iterate over each row in the DataFrame
-        for index, row in community_reviews.iterrows():
-            user_id = row['member_id']
-            similar_recipe_id = row['similar_recipe_id']
-            
-            # Check if the user reviewed the similar recipe
-            similar_recipe_review = df_reviews[(df_reviews['member_id'] == user_id) & (df_reviews['recipe_id'] == similar_recipe_id)]
+        # Initialize evaluation metrics
+        true_positives = 0
+        false_positives = 0
+        false_negatives = 0
 
-            # If the user reviewed the similar recipe, extract their rating
-            if not similar_recipe_review.empty:
-                similar_recipe_rating = similar_recipe_review.iloc[0]['rating']
-            else:
-                similar_recipe_rating = 0
-            
-            # Assign the rating to the 'similar_recipe_rating' column
-            community_reviews.at[index, 'similar_recipe_rating'] = similar_recipe_rating
+        # Iterate through similar recipes and their ratings
+        for user in community:
+            user_reviews = community_reviews[community_reviews['member_id'] == user]
+            for index, row in user_reviews.iterrows():
+                # Check if the similar recipe has been reviewed
+                if row['similar_recipe_id'] in user_reviews['recipe_id'].values:
+                    # Compare ratings between original and similar recipe
+                    if row['rating'] == user_reviews[user_reviews['recipe_id'] == row['similar_recipe_id']]['rating'].values[0]:
+                        true_positives += 1
+                    else:
+                        false_positives += 1
+                else:
+                    false_negatives += 1
 
-        # Drop rows with missing similar recipe ratings
-        community_reviews = community_reviews.drop(community_reviews[community_reviews['similar_recipe_rating'] == 0].index)
+        # Calculate precision and recall
+        precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+        recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
 
-        # Drop duplicate rows based on member_id, recipe_id, and similar_recipe_id
-        community_reviews.drop_duplicates(subset=['member_id', 'review_id', 'similar_recipe_id'], keep='first', inplace=True)
+        # Update total evaluation metrics
+        total_precision += precision
+        total_recall += recall
+        total_communities += 1
 
-        if len(community_reviews) > 1:
-        
-            # Prepare data for regression
-            regression_data = community_reviews[['rating', 'similar_recipe_rating']]
+    # Calculate average precision, recall
+    avg_precision = total_precision / total_communities if total_communities > 0 else 0
+    avg_recall = total_recall / total_communities if total_communities > 0 else 0
 
-            # Drop rows with missing ratings
-            regression_data.dropna(inplace=True)
+    return avg_precision, avg_recall
 
-            # Define features and target variable
-            X = regression_data[['rating']]
-            y = regression_data['similar_recipe_rating']
 
-            # Split the data into training and testing sets
-            X_train, X_test, y_train, y_test = tts(X, y, test_size=0.2, random_state=42)
+def overall_content_based_filtering(df_reviews, df_similar_recipes, filtered_communities):
 
-            # Initialize and train linear regression model
-            model = LinearRegression()
-            model.fit(X_train, y_train)
-
-            # Make predictions using the trained model
-            y_pred = model.predict(X_test)
-
-            # Calculate MAE and RMSE
-            mae = mean_absolute_error(y_test, y_pred)
-            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-
-            # Append scores to lists
-            mae_scores.append(mae)
-            rmse_scores.append(rmse)
-            
-            print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
-            print(f"\033[1mRMSE ->\033[0m", rmse)
-            print(f"\033[1mMAE ->\033[0m", mae)
-            print()
-            
-        else:
-            print(f"Community {i + 1} has insufficient data for recommendations.")
-
+    total_precision = 0
+    total_recall = 0
+    total_users = 0
     
-    # Calculate averages excluding values equal to 0
-    non_zero_rmse_scores = [score for score in rmse_scores if score != 0]
-    non_zero_mae_scores = [score for score in mae_scores if score != 0]
+    # Concatenate all communities into one list of member ids
+    all_members = [int(c) for community in filtered_communities for c in community]
+    all_member_reviews = df_reviews[df_reviews['member_id'].isin(all_members)]
 
-    avg_rmse = sum(non_zero_rmse_scores) / len(non_zero_rmse_scores) if non_zero_rmse_scores else 0
-    avg_mae = sum(non_zero_mae_scores) / len(non_zero_mae_scores) if non_zero_mae_scores else 0
-    
-    return avg_rmse, avg_mae
-
-def overall_content_based_filtering(df_reviews, df_similar_recipes, test_fraction=0.20, model_type='LinearRegression'):
-    rmse_scores = []
-    mae_scores = []
-    
     # Merge reviews dataframe with recipe similarity data
-    merged_data = pd.merge(df_reviews, df_similar_recipes, on='recipe_id', how='left')
+    all_member_reviews = pd.merge(all_member_reviews, df_similar_recipes, on='recipe_id', how='left')
 
-    # Iterate over each row in the merged DataFrame
-    for index, row in merged_data.iterrows():
-        user_id = row['member_id']
-        similar_recipe_id = row['similar_recipe_id']
-        
-        # Check if the user reviewed the similar recipe
-        similar_recipe_review = df_reviews[(df_reviews['member_id'] == user_id) & (df_reviews['recipe_id'] == similar_recipe_id)]
+    # Initialize evaluation metrics
+    true_positives = 0
+    false_positives = 0
+    false_negatives = 0
 
-        # If the user reviewed the similar recipe, extract their rating
-        if not similar_recipe_review.empty:
-            similar_recipe_rating = similar_recipe_review.iloc[0]['rating']
-        else:
-            similar_recipe_rating = 0
-        
-        # Assign the rating to the 'similar_recipe_rating' column
-        merged_data.at[index, 'similar_recipe_rating'] = similar_recipe_rating
+    # Iterate through all users in the concatenated list
+    for user_id in all_members:
+        user_reviews = all_member_reviews[all_member_reviews['member_id'] == user_id]
 
-    # Drop rows with missing similar recipe ratings
-    merged_data = merged_data.drop(merged_data[merged_data['similar_recipe_rating'] == 0].index)
+        # Iterate through similar recipes and their ratings
+        for index, row in user_reviews.iterrows():
+            # Check if the similar recipe has been reviewed
+            if row['similar_recipe_id'] in user_reviews['recipe_id'].values:
+                # Compare ratings between original and similar recipe
+                if row['rating'] == user_reviews[user_reviews['recipe_id'] == row['similar_recipe_id']]['rating'].values[0]:
+                    true_positives += 1
+                else:
+                    false_positives += 1
+            else:
+                false_negatives += 1
 
-    # Drop duplicate rows based on member_id, recipe_id, and similar_recipe_id
-    merged_data.drop_duplicates(subset=['member_id', 'review_id', 'similar_recipe_id'], keep='first', inplace=True)
+    # Calculate precision and recall
+    avg_precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+    avg_recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
 
-    if len(merged_data) > 0:
-    
-        # Prepare data for regression
-        regression_data = merged_data[['rating', 'similar_recipe_rating']]
-
-        # Drop rows with missing ratings
-        regression_data.dropna(inplace=True)
-
-        # Define features and target variable
-        X = regression_data[['rating']]
-        y = regression_data['similar_recipe_rating']
-
-        # Split the data into training and testing sets
-        X_train, X_test, y_train, y_test = tts(X, y, test_size=0.2, random_state=42)
-
-        # Initialize and train linear regression model
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-
-        # Make predictions using the trained model
-        y_pred = model.predict(X_test)
-
-        # Calculate MAE and RMSE
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-
-        # Append scores to lists
-        mae_scores.append(mae)
-        rmse_scores.append(rmse)
-        
-    else:
-        print("Insufficient data for recommendations.")
-
-    # Calculate averages excluding values equal to 0
-    non_zero_rmse_scores = [score for score in rmse_scores if score != 0]
-    non_zero_mae_scores = [score for score in mae_scores if score != 0]
-
-    avg_rmse = sum(non_zero_rmse_scores) / len(non_zero_rmse_scores) if non_zero_rmse_scores else 0
-    avg_mae = sum(non_zero_mae_scores) / len(non_zero_mae_scores) if non_zero_mae_scores else 0
-    
-    return avg_rmse, avg_mae
+    return avg_precision, avg_recall
 
 def initial_obs(df):
     display(df.head(10))
