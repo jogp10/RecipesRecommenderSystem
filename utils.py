@@ -341,6 +341,149 @@ def overall_content_based_filtering(df_reviews, df_similar_recipes, filtered_com
 
     return avg_precision, avg_recall
 
+def user_profiles(filtered_communities, df_reviews, df_recipes, df_members):
+    # Create a DataFrame to store the user profiles
+    user_profiles = pd.DataFrame()
+
+    # Iterate through each community
+    for i, community in enumerate(filtered_communities):
+        # Create a DataFrame for the current community
+        community_df = pd.DataFrame(community, columns=['member_id'])
+
+        # Merge with the members DataFrame to get the user names
+        community_df = pd.merge(community_df, df_members[['member_id', 'member_name']], on='member_id')
+
+        # Add a column for the community number
+        community_df['community'] = i + 1
+
+        # Add the community DataFrame to the user profiles DataFrame
+        user_profiles = pd.concat([user_profiles, community_df])
+
+    # Merge with the reviews DataFrame to get the reviews for each user
+    user_profiles = pd.merge(user_profiles, df_reviews[['member_id', 'recipe_id', 'rating']], on='member_id')
+
+    # Merge with the recipes DataFrame to get the recipe titles
+    user_profiles = pd.merge(user_profiles, df_recipes[['recipe_id', 'title', 'ingredient_food_kg_names']], on='recipe_id')
+
+    # Group by user and aggregate ingredient vectors
+    user_profiles_grouped = user_profiles.groupby('member_id').agg({
+        'ingredient_food_kg_names': ' '.join
+    }).reset_index()
+
+    # Vectorize the ingredient_food_kg_names column
+    tfidf_vectorizer = TfidfVectorizer()
+    tfidf_matrix = tfidf_vectorizer.fit_transform(user_profiles_grouped['ingredient_food_kg_names'])
+
+    # Convert the TF-IDF matrix to a DataFrame
+    tfidf_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
+
+    # Merge the TF-IDF DataFrame with the user profiles DataFrame
+    user_profiles_final = pd.concat([user_profiles_grouped, tfidf_df], axis=1)
+
+    return user_profiles_final
+
+def get_top_favorite_ingredients(user_profiles, user_id, top_n=10):
+    # Filter user profile by user_id
+    user_profile = user_profiles[user_profiles['member_id'] == user_id].iloc[0]
+
+    # Get TF-IDF values for ingredients
+    tfidf_values = user_profile.drop(['member_id', 'ingredient_food_kg_names'])
+
+    # Sort ingredients by TF-IDF values and get top n
+    top_ingredients = tfidf_values.sort_values(ascending=False).head(top_n)
+
+    return top_ingredients
+
+def get_top_favorite_ingredients_per_community(user_profiles, filtered_communities, top_n=10):
+    top_favorite_per_community = {}
+
+    # Iterate over each community
+    for i, community in enumerate(filtered_communities):
+        community_df = user_profiles[user_profiles['member_id'].isin(community)]
+        
+        # Drop unnecessary columns
+        community_df = community_df.drop(['member_id', 'ingredient_food_kg_names'], axis=1)
+
+        # Sum TF-IDF values for each ingredient
+        ingredient_sum = community_df.sum()
+
+        # Sort ingredients by sum TF-IDF values and get top n
+        top_ingredients = ingredient_sum.sort_values(ascending=False).head(top_n)
+
+        # Store top favorite ingredients for the community
+        top_favorite_per_community[i + 1] = top_ingredients
+
+    return top_favorite_per_community
+
+def community_recipe_recommendations(df_recipes, top_favorite_per_community):
+    community_recommendations = {}
+
+    # Iterate over each community
+    for community, top_ingredients in top_favorite_per_community.items():
+        # Filter recipes containing at least one of the community's favorite ingredients
+        community_recipes = df_recipes[df_recipes['ingredient_food_kg_names'].apply(lambda x: any(ingredient in x for ingredient in top_ingredients.index))]
+        
+        # Remove duplicate recipes
+        community_recipes = community_recipes.drop_duplicates(subset=['recipe_id'])
+        
+        # Calculate score for each recipe based on the TF-IDF values of favorite ingredients present
+        def calculate_score(ingredients):
+            score = 0
+            for ingredient, tfidf_value in top_ingredients.items():
+                if ingredient in ingredients:
+                    score += tfidf_value  # Use TF-IDF value directly as coefficient
+            return score
+        
+        community_recipes['score'] = community_recipes['ingredient_food_kg_names'].apply(calculate_score)
+        
+        # Rank recommendations based on score
+        ranked_recommendations = community_recipes.sort_values(by='score', ascending=False)
+        
+        # Store the ranked recommendations for the community
+        community_recommendations[community] = ranked_recommendations[['recipe_id', 'title', 'score']]
+
+    return community_recommendations
+
+def evaluate_recommendations(community_recommendations, df_reviews, filtered_communities):
+    precision_at_10 = {}
+    recall_at_10 = {}
+    total_precision = 0
+    total_recall = 0
+
+    # Iterate over each community's recommendations
+    for community_id, recommendations_df in community_recommendations.items():
+        community = filtered_communities[community_id-1]
+        
+        # Get the list of top 10 recommended recipes
+        recommended_recipe_ids = recommendations_df['recipe_id'].head(10).tolist()
+
+        # Get the actual recipes interacted with by users from the community
+        actual_interactions = df_reviews[df_reviews['member_id'].isin(community)]
+        actual_recipe_ids = actual_interactions['recipe_id'].unique()
+
+        # Calculate precision@10
+        true_positives = len(set(recommended_recipe_ids).intersection(actual_recipe_ids))
+        precision_at_10[community_id] = true_positives / min(len(recommended_recipe_ids), len(actual_recipe_ids))
+
+        # Calculate recall@10
+        recall_at_10[community_id] = true_positives / len(actual_recipe_ids)
+
+        # Print accuracy and recall@10 for each community
+        print(f"Community {community_id}:")
+        print(f"Accuracy@10: {precision_at_10[community_id]}")
+        print(f"Recall@10: {recall_at_10[community_id]}")
+        print()
+
+        # Update total precision and recall
+        total_precision += precision_at_10[community_id]
+        total_recall += recall_at_10[community_id]
+
+    # Calculate average precision and recall@10
+    avg_precision_at_10 = total_precision / len(community_recommendations)
+    avg_recall_at_10 = total_recall / len(community_recommendations)
+
+    return avg_precision_at_10, avg_recall_at_10
+
 def initial_obs(df):
     display(df.head(10))
     print(f"\n\033[1mAttributes:\033[0m {list(df.columns)}")
