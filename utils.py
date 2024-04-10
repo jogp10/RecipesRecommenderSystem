@@ -350,6 +350,8 @@ def user_profiles(filtered_communities, df_reviews, df_recipes, df_members):
         # Create a DataFrame for the current community
         community_df = pd.DataFrame(community, columns=['member_id'])
 
+        community_df['member_id'] = community_df['member_id'].astype('int64')
+
         # Merge with the members DataFrame to get the user names
         community_df = pd.merge(community_df, df_members[['member_id', 'member_name']], on='member_id')
 
@@ -399,7 +401,13 @@ def get_top_favorite_ingredients_per_community(user_profiles, filtered_communiti
 
     # Iterate over each community
     for i, community in enumerate(filtered_communities):
-        community_df = user_profiles[user_profiles['member_id'].isin(community)]
+
+        # Create a DataFrame for the current community
+        community_df = pd.DataFrame(community, columns=['member_id'])
+
+        community_df['member_id'] = community_df['member_id'].astype('int64')
+
+        community_df = user_profiles[user_profiles['member_id'].isin(community_df['member_id'])]
         
         # Drop unnecessary columns
         community_df = community_df.drop(['member_id', 'ingredient_food_kg_names'], axis=1)
@@ -453,12 +461,17 @@ def evaluate_recommendations(community_recommendations, df_reviews, filtered_com
     # Iterate over each community's recommendations
     for community_id, recommendations_df in community_recommendations.items():
         community = filtered_communities[community_id-1]
+
+        # Create a DataFrame for the current community
+        community_df = pd.DataFrame(community, columns=['member_id'])
+
+        community_df['member_id'] = community_df['member_id'].astype('int64')
         
         # Get the list of top 10 recommended recipes
         recommended_recipe_ids = recommendations_df['recipe_id'].head(10).tolist()
 
         # Get the actual recipes interacted with by users from the community
-        actual_interactions = df_reviews[df_reviews['member_id'].isin(community)]
+        actual_interactions = df_reviews[df_reviews['member_id'].isin(community_df['member_id'])]
         actual_recipe_ids = actual_interactions['recipe_id'].unique()
 
         # Calculate precision@10
