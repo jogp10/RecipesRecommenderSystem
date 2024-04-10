@@ -101,6 +101,7 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
     mae_scores = []
     precision_scores = []
     recall_scores = []
+    sizes = []
     
     for i, community in enumerate(communities):
         community = [int(c) for c in community]
@@ -136,6 +137,7 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
             mae_scores.append(mae)
             precision_scores.append(precision)
             recall_scores.append(recall)
+            sizes.append(len(community))
             
             print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
             print(f"\033[1mRMSE ->\033[0m", rmse)
@@ -154,6 +156,67 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
     avg_recall = sum(recall_scores) / len(recall_scores)
     
     return avg_rmse, avg_mae, avg_precision, avg_recall
+
+def collaborative_filtering_with_values(df_reviews, communities, test_fraction = 0.20, user_based = True, model_type = 'KNN'):
+    rmse_scores = []
+    mae_scores = []
+    precision_scores = []
+    recall_scores = []
+    sizes = []
+    
+    for i, community in enumerate(communities):
+        community = [int(c) for c in community]
+        community_reviews = df_reviews[df_reviews['member_id'].isin(community)]
+    
+        if len(community_reviews) > 0:
+        
+            reader = Reader(rating_scale=(1, 5))
+            data = Dataset.load_from_df(community_reviews[['member_id', 'recipe_id', 'rating']], reader)
+            trainset, testset = train_test_split(data, test_size = test_fraction)
+
+            if model_type == 'KNN':
+                model = KNNBasic(sim_options={'user_based': user_based}, verbose= False)
+            elif model_type == 'SVD':
+                model = SVD(verbose = False)
+            elif model_type == "Random":
+                model = NormalPredictor()
+
+
+            model.fit(trainset)
+
+            predictions = model.test(testset, verbose= False)
+            
+            precisions, recalls = precision_recall_at_k(predictions, k=10, threshold=4)
+
+            precision = sum(prec for prec in precisions.values()) / len(precisions)
+            recall = sum(rec for rec in recalls.values()) / len(recalls)
+
+            rmse = accuracy.rmse(predictions, verbose= False)
+            mae = accuracy.mae(predictions, verbose =False)
+        
+            rmse_scores.append(rmse)
+            mae_scores.append(mae)
+            precision_scores.append(precision)
+            recall_scores.append(recall)
+            sizes.append(len(community))
+            
+            print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
+            print(f"\033[1mRMSE ->\033[0m", rmse)
+            print(f"\033[1mMAE ->\033[0m", mae)
+            print(f"\033[1mPrecision@10 ->\033[0m", precision)
+            print(f"\033[1mRecall@10 ->\033[0m", recall)
+            print()
+            
+        else:
+            print(f"Community {i + 1} has insufficient data for recommendations.")
+
+    
+    avg_rmse = sum(rmse_scores) / len(rmse_scores)
+    avg_mae = sum(mae_scores) / len(mae_scores)
+    avg_precision = sum(precision_scores) / len(precision_scores)
+    avg_recall = sum(recall_scores) / len(recall_scores)
+    
+    return avg_rmse, avg_mae, avg_precision, avg_recall, rmse_scores, mae_scores, sizes
 
 def find_similars(df_reviews, df_recipes):
     all_recommendations = {}
