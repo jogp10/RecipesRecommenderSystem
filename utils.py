@@ -111,7 +111,7 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
         
             reader = Reader(rating_scale=(1, 5))
             data = Dataset.load_from_df(community_reviews[['member_id', 'recipe_id', 'rating']], reader)
-            trainset, testset = train_test_split(data, test_size = test_fraction)
+            trainset, testset = my_tts(data, test_size = test_fraction)
 
             if model_type == 'KNN':
                 model = KNNBasic(sim_options={'user_based': user_based}, verbose= False)
@@ -125,7 +125,7 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
 
             predictions = model.test(testset, verbose= False)
             
-            precisions, recalls = precision_recall_at_k(predictions, k=10, threshold=4)
+            precisions, recalls = precision_recall_at_k(predictions)
 
             precision = sum(prec for prec in precisions.values()) / len(precisions)
             recall = sum(rec for rec in recalls.values()) / len(recalls)
@@ -157,6 +157,12 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
     
     return avg_rmse, avg_mae, avg_precision, avg_recall
 
+def my_tts(data, test_size=.20):
+    trainset, testset = train_test_split(data, test_size=test_size)
+    # ensure users in testset are in trainset
+    # testset = [x for x in testset if x[0] in trainset.all_users()]
+    return trainset, testset
+
 def collaborative_filtering_with_values(df_reviews, communities, test_fraction = 0.20, user_based = True, model_type = 'KNN'):
     rmse_scores = []
     mae_scores = []
@@ -172,7 +178,7 @@ def collaborative_filtering_with_values(df_reviews, communities, test_fraction =
         
             reader = Reader(rating_scale=(1, 5))
             data = Dataset.load_from_df(community_reviews[['member_id', 'recipe_id', 'rating']], reader)
-            trainset, testset = train_test_split(data, test_size = test_fraction)
+            trainset, testset = my_tts(data, test_size = test_fraction)
 
             if model_type == 'KNN':
                 model = KNNBasic(sim_options={'user_based': user_based}, verbose= False)
@@ -186,7 +192,7 @@ def collaborative_filtering_with_values(df_reviews, communities, test_fraction =
 
             predictions = model.test(testset, verbose= False)
             
-            precisions, recalls = precision_recall_at_k(predictions, k=10, threshold=4)
+            precisions, recalls = precision_recall_at_k(predictions)
 
             precision = sum(prec for prec in precisions.values()) / len(precisions)
             recall = sum(rec for rec in recalls.values()) / len(recalls)
@@ -624,7 +630,7 @@ def evaluate_model(model, trainset, testset):
     rmse = accuracy.rmse(predictions, verbose=False)
     mae = accuracy.mae(predictions, verbose=False)
     
-    precisions, recalls = precision_recall_at_k(predictions, k=10, threshold=4)
+    precisions, recalls = precision_recall_at_k(predictions)
     precision = sum(prec for prec in precisions.values()) / len(precisions)
     recall = sum(rec for rec in recalls.values()) / len(recalls)
 
@@ -656,7 +662,7 @@ def get_top_n(predictions, n=10):
 
     return top_n
 
-def precision_recall_at_k(predictions, k=10, threshold=3):
+def precision_recall_at_k(predictions, k=3, threshold=4):
     """Return precision and recall at k metrics for each user"""
 
     user_est_true = defaultdict(list)
