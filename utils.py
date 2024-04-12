@@ -1,3 +1,4 @@
+import ast
 import networkx as nx
 from networkx.algorithms import community
 import pandas as pd
@@ -662,7 +663,7 @@ def get_top_n(predictions, n=10):
 
     return top_n
 
-def precision_recall_at_k(predictions, k=3, threshold=4):
+def precision_recall_at_k(predictions, k=5, threshold=4):
     """Return precision and recall at k metrics for each user"""
 
     user_est_true = defaultdict(list)
