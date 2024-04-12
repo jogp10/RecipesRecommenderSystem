@@ -142,8 +142,8 @@ def collaborative_filtering(df_reviews, communities, test_fraction = 0.20, user_
             print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
             print(f"\033[1mRMSE ->\033[0m", rmse)
             print(f"\033[1mMAE ->\033[0m", mae)
-            print(f"\033[1mPrecision@10 ->\033[0m", precision)
-            print(f"\033[1mRecall@10 ->\033[0m", recall)
+            print(f"\033[1mPrecision@3 ->\033[0m", precision)
+            print(f"\033[1mRecall@3 ->\033[0m", recall)
             print()
             
         else:
@@ -209,8 +209,8 @@ def collaborative_filtering_with_values(df_reviews, communities, test_fraction =
             print(f"\033[1mCommunity {i + 1}\033[0m -> Size: {len(community)}")
             print(f"\033[1mRMSE ->\033[0m", rmse)
             print(f"\033[1mMAE ->\033[0m", mae)
-            print(f"\033[1mPrecision@10 ->\033[0m", precision)
-            print(f"\033[1mRecall@10 ->\033[0m", recall)
+            print(f"\033[1mPrecision@3 ->\033[0m", precision)
+            print(f"\033[1mRecall@3 ->\033[0m", recall)
             print()
             
         else:
@@ -554,24 +554,24 @@ def evaluate_recommendations(community_recommendations, df_reviews, filtered_com
         actual_interactions = df_reviews[df_reviews['member_id'].isin(community_df['member_id'])]
         actual_recipe_ids = actual_interactions['recipe_id'].unique()
 
-        # Calculate precision@10
+        # Calculate precision@3
         true_positives = len(set(recommended_recipe_ids).intersection(actual_recipe_ids))
         precision_at_10[community_id] = true_positives / min(len(recommended_recipe_ids), len(actual_recipe_ids))
 
-        # Calculate recall@10
+        # Calculate recall@3
         recall_at_10[community_id] = true_positives / len(actual_recipe_ids)
 
-        # Print accuracy and recall@10 for each community
+        # Print accuracy and recall@3 for each community
         print(f"Community {community_id}:")
-        print(f"Accuracy@10: {precision_at_10[community_id]}")
-        print(f"Recall@10: {recall_at_10[community_id]}")
+        print(f"Accuracy@3: {precision_at_10[community_id]}")
+        print(f"Recall@3: {recall_at_10[community_id]}")
         print()
 
         # Update total precision and recall
         total_precision += precision_at_10[community_id]
         total_recall += recall_at_10[community_id]
 
-    # Calculate average precision and recall@10
+    # Calculate average precision and recall@3
     avg_precision_at_10 = total_precision / (len(community_recommendations) - communities_without_rec)
     avg_recall_at_10 = total_recall / (len(community_recommendations) - communities_without_rec)
 
