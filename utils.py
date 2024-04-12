@@ -265,11 +265,12 @@ def find_similars(df_reviews, df_recipes):
                     'similar_recipes': []
                 }
             
-            all_recommendations[recipe_id]['similar_recipes'].append({
-                'title': similar_recipe_title,
-                'id': similar_recipe_id,
-                'score': similar_score
-            })
+            if similar_score > 0:
+                all_recommendations[recipe_id]['similar_recipes'].append({
+                    'title': similar_recipe_title,
+                    'id': similar_recipe_id,
+                    'score': similar_score
+                })
     
     return all_recommendations
 
@@ -510,6 +511,10 @@ def community_recipe_recommendations(df_recipes, top_favorite_per_community):
         # Rank recommendations based on score
         ranked_recommendations = community_recipes.sort_values(by='score', ascending=False)
         
+        # Eliminate recipes outside the 25% percentile and with score above 0.0
+        ranked_recommendations = ranked_recommendations[ranked_recommendations['score'] > 0.0]
+        ranked_recommendations = ranked_recommendations[ranked_recommendations['score'] >= ranked_recommendations['score'].quantile(0.25)]
+
         # Store the ranked recommendations for the community
         community_recommendations[community] = ranked_recommendations[['recipe_id', 'title', 'score']]
 
@@ -520,6 +525,7 @@ def evaluate_recommendations(community_recommendations, df_reviews, filtered_com
     recall_at_10 = {}
     total_precision = 0
     total_recall = 0
+    communities_without_rec = 0
 
     # Iterate over each community's recommendations
     for community_id, recommendations_df in community_recommendations.items():
@@ -529,6 +535,11 @@ def evaluate_recommendations(community_recommendations, df_reviews, filtered_com
         community_df = pd.DataFrame(community, columns=['member_id'])
 
         community_df['member_id'] = community_df['member_id'].astype('int64')
+        
+        if len(recommendations_df) == 0:
+            print(f"No recommendations for Community {community_id}")
+            communities_without_rec += 1
+            continue
         
         # Get the list of top 10 recommended recipes
         recommended_recipe_ids = recommendations_df['recipe_id'].head(10).tolist()
@@ -555,8 +566,8 @@ def evaluate_recommendations(community_recommendations, df_reviews, filtered_com
         total_recall += recall_at_10[community_id]
 
     # Calculate average precision and recall@10
-    avg_precision_at_10 = total_precision / len(community_recommendations)
-    avg_recall_at_10 = total_recall / len(community_recommendations)
+    avg_precision_at_10 = total_precision / (len(community_recommendations) - communities_without_rec)
+    avg_recall_at_10 = total_recall / (len(community_recommendations) - communities_without_rec)
 
     return avg_precision_at_10, avg_recall_at_10
 
